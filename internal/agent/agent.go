@@ -160,7 +160,12 @@ func (a *Agent) runLLM(ctx context.Context, sessionID, runID, workspace, prompt 
 	for turn := 0; turn < 4; turn++ {
 		msg, err := llm.Complete(ctx, llmCfg, messages, toolDefinitions())
 		if err != nil {
-			return a.respond(sessionID, runID, "Chua goi duoc AI: "+err.Error()+"\n\nKiem tra API URL, Token, Model; sau do bam Tai model va Luu.", events, nil)
+			plain, plainErr := llm.Complete(ctx, llmCfg, messages, nil)
+			if plainErr == nil && strings.TrimSpace(plain.Content) != "" {
+				events = append(events, tools.Event{Name: "llm.retry_no_tools", OK: true, Message: "Provider rejected tool-calling; retried plain chat"})
+				return a.respond(sessionID, runID, plain.Content, events, nil)
+			}
+			return a.respond(sessionID, runID, "Chua goi duoc AI.\n\nTool-calling error: "+err.Error()+"\n\nPlain chat retry error: "+plainErr.Error()+"\n\nKiem tra API URL phai ket thuc bang /v1, token con dung, model da chon co chat completions, hoac thu model/provider khac.", events, nil)
 		}
 		if len(msg.ToolCalls) == 0 {
 			if msg.Content == "" {
