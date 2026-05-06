@@ -128,10 +128,6 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAsset(name, contentType string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("token") != s.token {
-			http.Error(w, "invalid token", http.StatusForbidden)
-			return
-		}
 		s.serveEmbedded(w, name, contentType)
 	}
 }
