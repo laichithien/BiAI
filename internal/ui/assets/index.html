@@ -9,31 +9,49 @@
 <body>
   <div id="topbar">
     <div class="brand">BiAI AgentDesk</div>
-    <input id="workspace" type="text" placeholder="Thu muc du an, vi du C:\project" />
+    <div class="workspaceWrap">
+      <div class="topLabel">Workspace</div>
+      <input id="workspace" type="text" placeholder="C:\project" />
+    </div>
     <span id="status">San sang</span>
   </div>
   <div id="main">
     <div id="chat"></div>
     <div id="side">
-      <h3>Cau hinh AI</h3>
-      <label>API URL</label>
-      <input id="llmBaseURL" class="sideInput" type="text" placeholder="https://api.openai.com/v1" />
-      <label>Token</label>
-      <input id="apiToken" class="sideInput" type="password" placeholder="Nhap token roi bam Tai model" />
-      <label>Model</label>
-      <select id="model" class="sideInput"></select>
-      <button id="fetchModels" type="button">Tai model</button>
-      <button id="saveSettings" type="button">Luu</button>
-      <div id="settingsStatus" class="hint"></div>
-      <pre id="settingsDetail" class="detail"></pre>
-      <h3>Lenh nhanh</h3>
-      <div class="hint">/list .</div>
-      <div class="hint">/read file.txt</div>
-      <div class="hint">/search tu_khoa</div>
-      <div class="hint">/cmd go test ./...</div>
-      <h3>Trang thai</h3>
-      <div id="diag" class="hint">Loading...</div>
-      <div id="events"></div>
+      <div class="section">
+        <div class="sectionTitle">AI Provider</div>
+        <label>Base URL</label>
+        <input id="llmBaseURL" class="sideInput" type="text" placeholder="https://api.openai.com/v1" />
+        <label>API Token</label>
+        <input id="apiToken" class="sideInput" type="password" placeholder="Nhap token" />
+        <label>Model</label>
+        <select id="model" class="sideInput"></select>
+        <div class="buttonRow">
+          <button id="fetchModels" type="button">Tai model</button>
+          <button id="saveSettings" type="button">Luu</button>
+        </div>
+        <div id="settingsStatus" class="statusLine"></div>
+        <pre id="settingsDetail" class="detail"></pre>
+      </div>
+
+      <div class="section">
+        <div class="sectionTitle">Quick Commands</div>
+        <div class="quickCmd">/list .</div>
+        <div class="quickCmd">/read file.txt</div>
+        <div class="quickCmd">/search keyword</div>
+        <div class="quickCmd">/cmd go test ./...</div>
+      </div>
+
+      <div class="section">
+        <div class="sectionTitle">Diagnostics</div>
+        <div id="diag" class="diagBox">Loading...</div>
+      </div>
+
+      <div class="section">
+        <div class="sectionTitle">Events</div>
+        <div class="hint">Lenh xoa se hoi xac nhan truoc khi chay.</div>
+        <div id="events"></div>
+      </div>
     </div>
   </div>
   <div id="composer">
