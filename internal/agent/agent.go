@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"biai/internal/config"
@@ -24,6 +25,16 @@ type Agent struct {
 	tools   *tools.Registry
 	audit   *safety.AuditLog
 	history *memory.History
+	mu      sync.Mutex
+	pending map[string]pendingApproval
+}
+
+type pendingApproval struct {
+	SessionID string
+	RunID     string
+	LLMCfg    llm.ChatConfig
+	Messages  []llm.Message
+	ToolCall  llm.ToolCall
 }
 
 func New(cfg Config) *Agent {
@@ -33,24 +44,28 @@ func New(cfg Config) *Agent {
 		audit:   audit,
 		tools:   tools.NewRegistry(audit),
 		history: memory.NewHistory(cfg.DataDir),
+		pending: make(map[string]pendingApproval),
 	}
 }
 
 type ChatRequest struct {
 	Prompt    string `json:"prompt"`
 	Workspace string `json:"workspace"`
+	SessionID string `json:"session_id"`
 }
 
 type ChatResponse struct {
-	RunID    string         `json:"run_id"`
-	Message  string         `json:"message"`
-	Events   []tools.Event  `json:"events"`
-	Approval *ApprovalDraft `json:"approval,omitempty"`
+	RunID     string         `json:"run_id"`
+	SessionID string         `json:"session_id"`
+	Message   string         `json:"message"`
+	Events    []tools.Event  `json:"events"`
+	Approval  *ApprovalDraft `json:"approval,omitempty"`
 }
 
 type ApprovalDraft struct {
 	ID            string            `json:"id"`
 	RunID         string            `json:"run_id"`
+	SessionID     string            `json:"session_id"`
 	ToolName      string            `json:"tool_name"`
 	Risk          string            `json:"risk"`
 	Command       string            `json:"command,omitempty"`
@@ -62,12 +77,16 @@ type ApprovalDraft struct {
 
 func (a *Agent) Chat(ctx context.Context, req ChatRequest) ChatResponse {
 	runID := fmt.Sprintf("run_%d", time.Now().UnixNano())
+	sessionID := strings.TrimSpace(req.SessionID)
+	if sessionID == "" {
+		sessionID = memory.NewSessionID()
+	}
 	workspace := strings.TrimSpace(req.Workspace)
 	prompt := strings.TrimSpace(req.Prompt)
 	if prompt == "" {
-		return ChatResponse{RunID: runID, Message: "Nhap noi dung truoc khi gui."}
+		return ChatResponse{RunID: runID, SessionID: sessionID, Message: "Nhap noi dung truoc khi gui."}
 	}
-	a.history.Append(memory.HistoryEntry{SessionID: "current", RunID: runID, Role: "user", Content: prompt})
+	a.history.Append(memory.HistoryEntry{SessionID: sessionID, RunID: runID, Role: "user", Content: prompt})
 
 	events := make([]tools.Event, 0, 2)
 	lower := strings.ToLower(prompt)
@@ -76,23 +95,24 @@ func (a *Agent) Chat(ctx context.Context, req ChatRequest) ChatResponse {
 	case strings.HasPrefix(lower, "/list"):
 		ev, msg := a.tools.ListDirectory(workspace, strings.TrimSpace(prompt[len("/list"):]))
 		events = append(events, ev)
-		return a.respond(runID, msg, events, nil)
+		return a.respond(sessionID, runID, msg, events, nil)
 	case strings.HasPrefix(lower, "/read"):
 		ev, msg := a.tools.ReadFile(workspace, strings.TrimSpace(prompt[len("/read"):]))
 		events = append(events, ev)
-		return a.respond(runID, msg, events, nil)
+		return a.respond(sessionID, runID, msg, events, nil)
 	case strings.HasPrefix(lower, "/search"):
 		ev, msg := a.tools.SearchText(workspace, strings.TrimSpace(prompt[len("/search"):]))
 		events = append(events, ev)
-		return a.respond(runID, msg, events, nil)
+		return a.respond(sessionID, runID, msg, events, nil)
 	case strings.HasPrefix(lower, "/cmd"):
 		command := strings.TrimSpace(prompt[len("/cmd"):])
 		ev, approval, msg := a.tools.PlanCommand(runID, workspace, command, "User requested command execution from chat.")
 		events = append(events, ev)
 		if approval != nil {
-			return a.respond(runID, msg, events, &ApprovalDraft{
+			return a.respond(sessionID, runID, msg, events, &ApprovalDraft{
 				ID:            approval.ID,
 				RunID:         runID,
+				SessionID:     sessionID,
 				ToolName:      approval.ToolName,
 				Risk:          string(approval.Risk),
 				Command:       approval.Command,
@@ -102,21 +122,21 @@ func (a *Agent) Chat(ctx context.Context, req ChatRequest) ChatResponse {
 				Arguments:     approval.Arguments,
 			})
 		}
-		return a.respond(runID, msg, events, nil)
+		return a.respond(sessionID, runID, msg, events, nil)
 	default:
-		return a.runLLM(ctx, runID, workspace, prompt)
+		return a.runLLM(ctx, sessionID, runID, workspace, prompt)
 	}
 }
 
-func (a *Agent) runLLM(ctx context.Context, runID, workspace, prompt string) ChatResponse {
+func (a *Agent) runLLM(ctx context.Context, sessionID, runID, workspace, prompt string) ChatResponse {
 	events := make([]tools.Event, 0, 4)
 	cfg, cfgErr := config.LoadUserConfig(a.dataDir)
 	sec, secErr := config.LoadUserSecrets(a.dataDir)
 	if cfgErr != nil {
-		return a.respond(runID, "Khong doc duoc config: "+cfgErr.Error(), events, nil)
+		return a.respond(sessionID, runID, "Khong doc duoc config: "+cfgErr.Error(), events, nil)
 	}
 	if secErr != nil {
-		return a.respond(runID, "Khong doc duoc token: "+secErr.Error(), events, nil)
+		return a.respond(sessionID, runID, "Khong doc duoc token: "+secErr.Error(), events, nil)
 	}
 	instructions := memory.LoadInstructions(a.dataDir, workspace)
 	systemPrompt := "You are BiAI AgentDesk, a practical local coding assistant. Use tools when you need workspace evidence. Never invent file contents. For shell commands, explain why; destructive commands require user approval by the app.\n\n" + sysctx.DynamicContext(a.dataDir, workspace)
@@ -128,7 +148,7 @@ func (a *Agent) runLLM(ctx context.Context, runID, workspace, prompt string) Cha
 	messages := []llm.Message{
 		{Role: "system", Content: systemPrompt},
 	}
-	for _, h := range a.history.Recent(12) {
+	for _, h := range a.history.Recent(sessionID, 12) {
 		if h.RunID == runID {
 			continue
 		}
@@ -140,20 +160,28 @@ func (a *Agent) runLLM(ctx context.Context, runID, workspace, prompt string) Cha
 	for turn := 0; turn < 4; turn++ {
 		msg, err := llm.Complete(ctx, llmCfg, messages, toolDefinitions())
 		if err != nil {
-			return a.respond(runID, "Chua goi duoc AI: "+err.Error()+"\n\nKiem tra API URL, Token, Model; sau do bam Tai model va Luu.", events, nil)
+			return a.respond(sessionID, runID, "Chua goi duoc AI: "+err.Error()+"\n\nKiem tra API URL, Token, Model; sau do bam Tai model va Luu.", events, nil)
 		}
 		if len(msg.ToolCalls) == 0 {
 			if msg.Content == "" {
 				msg.Content = "Model khong tra ve noi dung."
 			}
-			return a.respond(runID, msg.Content, events, nil)
+			return a.respond(sessionID, runID, msg.Content, events, nil)
 		}
 		messages = append(messages, msg)
 		for _, call := range msg.ToolCalls {
 			ev, content, approval := a.executeLLMTool(runID, workspace, call)
 			events = append(events, ev)
 			if approval != nil {
-				return a.respond(runID, "Command can user approve truoc khi execute.", events, approval)
+				a.savePendingApproval(approval.ID, pendingApproval{
+					SessionID: sessionID,
+					RunID:     runID,
+					LLMCfg:    llmCfg,
+					Messages:  append([]llm.Message(nil), messages...),
+					ToolCall:  call,
+				})
+				approval.SessionID = sessionID
+				return a.respond(sessionID, runID, "Command can user approve truoc khi execute.", events, approval)
 			}
 			messages = append(messages, llm.Message{
 				Role:       "tool",
@@ -163,7 +191,23 @@ func (a *Agent) runLLM(ctx context.Context, runID, workspace, prompt string) Cha
 			})
 		}
 	}
-	return a.respond(runID, "Agent dung lai sau nhieu tool calls. Hay thu lai voi yeu cau cu the hon.", events, nil)
+	return a.respond(sessionID, runID, "Agent dung lai sau nhieu tool calls. Hay thu lai voi yeu cau cu the hon.", events, nil)
+}
+
+func (a *Agent) savePendingApproval(id string, pending pendingApproval) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.pending[id] = pending
+}
+
+func (a *Agent) takePendingApproval(id string) (pendingApproval, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	p, ok := a.pending[id]
+	if ok {
+		delete(a.pending, id)
+	}
+	return p, ok
 }
 
 func (a *Agent) HistoryPath() string {
@@ -174,9 +218,9 @@ func (a *Agent) LoadedInstructions(workspace string) memory.InstructionSet {
 	return memory.LoadInstructions(a.dataDir, workspace)
 }
 
-func (a *Agent) respond(runID, message string, events []tools.Event, approval *ApprovalDraft) ChatResponse {
-	a.history.Append(memory.HistoryEntry{SessionID: "current", RunID: runID, Role: "assistant", Content: message})
-	return ChatResponse{RunID: runID, Message: message, Events: events, Approval: approval}
+func (a *Agent) respond(sessionID, runID, message string, events []tools.Event, approval *ApprovalDraft) ChatResponse {
+	a.history.Append(memory.HistoryEntry{SessionID: sessionID, RunID: runID, Role: "assistant", Content: message})
+	return ChatResponse{RunID: runID, SessionID: sessionID, Message: message, Events: events, Approval: approval}
 }
 
 func (a *Agent) executeLLMTool(runID, workspace string, call llm.ToolCall) (tools.Event, string, *ApprovalDraft) {
@@ -275,7 +319,30 @@ type ApprovalResponse struct {
 }
 
 func (a *Agent) DecideApproval(ctx context.Context, req ApprovalRequest) ApprovalResponse {
+	pending, hasPending := a.takePendingApproval(req.ApprovalID)
 	ev, msg, ok := a.tools.DecideCommandApproval(req.ApprovalID, req.Decision)
+	if strings.ToLower(req.Decision) != "allow" || !hasPending {
+		if ev.Name != "" {
+			return ApprovalResponse{OK: ok, Message: msg, Event: &ev}
+		}
+		return ApprovalResponse{OK: ok, Message: msg}
+	}
+	if ev.Name != "" {
+		pending.Messages = append(pending.Messages, llm.Message{
+			Role:       "tool",
+			ToolCallID: pending.ToolCall.ID,
+			Name:       pending.ToolCall.Function.Name,
+			Content:    msg,
+		})
+		final, err := llm.Complete(ctx, pending.LLMCfg, pending.Messages, nil)
+		if err == nil && strings.TrimSpace(final.Content) != "" {
+			a.history.Append(memory.HistoryEntry{SessionID: pending.SessionID, RunID: pending.RunID, Role: "assistant", Content: final.Content})
+			return ApprovalResponse{OK: ok, Message: final.Content, Event: &ev}
+		}
+		if err != nil {
+			return ApprovalResponse{OK: false, Message: msg + "\n\nCommand da chay, nhung khong resume duoc AI: " + err.Error(), Event: &ev}
+		}
+	}
 	if ev.Name != "" {
 		return ApprovalResponse{OK: ok, Message: msg, Event: &ev}
 	}

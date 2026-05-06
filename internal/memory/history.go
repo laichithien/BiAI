@@ -2,6 +2,8 @@ package memory
 
 import (
 	"bufio"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -23,7 +25,7 @@ type HistoryEntry struct {
 }
 
 func NewHistory(dataDir string) *History {
-	return &History{path: filepath.Join(dataDir, "sessions", "current.jsonl")}
+	return &History{path: filepath.Join(dataDir, "sessions")}
 }
 
 func (h *History) Path() string {
@@ -33,13 +35,29 @@ func (h *History) Path() string {
 	return h.path
 }
 
+func NewSessionID() string {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "session_" + time.Now().Format("20060102_150405")
+	}
+	return "session_" + time.Now().Format("20060102_150405") + "_" + hex.EncodeToString(b[:])
+}
+
+func (h *History) SessionPath(sessionID string) string {
+	if sessionID == "" {
+		sessionID = "default"
+	}
+	return filepath.Join(h.path, sessionID+".jsonl")
+}
+
 func (h *History) Append(entry HistoryEntry) {
 	if h == nil {
 		return
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	_ = os.MkdirAll(filepath.Dir(h.path), 0o700)
+	path := h.SessionPath(entry.SessionID)
+	_ = os.MkdirAll(filepath.Dir(path), 0o700)
 	if entry.Time.IsZero() {
 		entry.Time = time.Now()
 	}
@@ -47,7 +65,7 @@ func (h *History) Append(entry HistoryEntry) {
 	if err != nil {
 		return
 	}
-	f, err := os.OpenFile(h.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return
 	}
@@ -55,11 +73,11 @@ func (h *History) Append(entry HistoryEntry) {
 	_, _ = f.Write(append(b, '\n'))
 }
 
-func (h *History) Recent(limit int) []HistoryEntry {
+func (h *History) Recent(sessionID string, limit int) []HistoryEntry {
 	if h == nil || limit <= 0 {
 		return nil
 	}
-	f, err := os.Open(h.path)
+	f, err := os.Open(h.SessionPath(sessionID))
 	if err != nil {
 		return nil
 	}

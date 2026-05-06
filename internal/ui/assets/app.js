@@ -1,9 +1,11 @@
 (function () {
   var token = "";
   var pendingApproval = null;
+  var sessionID = "";
 
   function init() {
     token = getQuery("token");
+    sessionID = getStoredSession();
     byId("send").onclick = sendPrompt;
     byId("saveSettings").onclick = saveSettings;
     byId("fetchModels").onclick = fetchModels;
@@ -115,7 +117,7 @@
     byId("prompt").value = "";
     addMessage("user", prompt);
     setBusy("Dang chay");
-    postJSON("/api/chat", { prompt: prompt, workspace: workspace }, function (err, resp) {
+    postJSON("/api/chat", { prompt: prompt, workspace: workspace, session_id: sessionID }, function (err, resp) {
       setStatus("San sang");
       if (err) {
         setError("Loi");
@@ -124,6 +126,10 @@
       }
       if (resp.events) {
         for (var i = 0; i < resp.events.length; i++) addEvent(resp.events[i]);
+      }
+      if (resp.session_id) {
+        sessionID = resp.session_id;
+        saveStoredSession(sessionID);
       }
       addMessage("agent", resp.message || "");
       if (resp.approval) showApproval(resp.approval);
@@ -263,6 +269,20 @@
     opt.value = value;
     opt.appendChild(document.createTextNode(label));
     select.appendChild(opt);
+  }
+
+  function getStoredSession() {
+    try {
+      var existing = window.localStorage ? window.localStorage.getItem("biai.session_id") : "";
+      if (existing) return existing;
+    } catch (e) {}
+    return "session_" + (new Date().getTime());
+  }
+
+  function saveStoredSession(id) {
+    try {
+      if (window.localStorage) window.localStorage.setItem("biai.session_id", id);
+    } catch (e) {}
   }
 
   function postJSON(url, payload, cb) {
