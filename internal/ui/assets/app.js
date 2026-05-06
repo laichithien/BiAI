@@ -202,7 +202,8 @@
         return;
       }
       byId("apiToken").value = "";
-      byId("settingsStatus").innerText = "Da luu";
+      byId("settingsStatus").innerText = "Da luu. Token duoc an vi bao mat.";
+      byId("modelFetchBox").className = "fetchBox ok";
     });
   }
 
