@@ -63,9 +63,9 @@
     if (!prompt) return;
     byId("prompt").value = "";
     addMessage("user", prompt);
-    setStatus("Running");
+    setStatus("Dang chay");
     postJSON("/api/chat", { prompt: prompt, workspace: workspace }, function (err, resp) {
-      setStatus("Idle");
+      setStatus("San sang");
       if (err) {
         addMessage("agent", "Error: " + err);
         return;
@@ -82,10 +82,10 @@
     pendingApproval = ap;
     var lines = [];
     lines.push("Tool: " + ap.tool_name);
-    lines.push("Risk: " + ap.risk);
-    lines.push("Command: " + (ap.command || ""));
-    lines.push("Cwd: " + (ap.cwd || ""));
-    lines.push("Reason: " + (ap.reason || ""));
+    lines.push("Muc rui ro: " + ap.risk);
+    lines.push("Lenh: " + (ap.command || ""));
+    lines.push("Thu muc chay: " + (ap.cwd || ""));
+    lines.push("Ly do: " + (ap.reason || ""));
     lines.push("");
     lines.push(ap.safety_summary || "");
     byId("approvalBody").innerHTML = "";
@@ -99,10 +99,10 @@
     if (!pendingApproval) return;
     var id = pendingApproval.id;
     byId("approval").className = "hidden";
-    setStatus("Approving");
+    setStatus("Dang xac nhan");
     postJSON("/api/approval", { approval_id: id, decision: decision }, function (err, resp) {
       pendingApproval = null;
-      setStatus("Idle");
+      setStatus("San sang");
       if (err) {
         addMessage("agent", "Approval error: " + err);
         return;
@@ -115,12 +115,12 @@
   function loadSettings() {
     getJSON("/api/settings", function (err, resp) {
       if (err) {
-      byId("settingsStatus").innerText = "Cannot load settings";
+        byId("settingsStatus").innerText = "Khong doc duoc cau hinh";
         return;
       }
       byId("llmBaseURL").value = resp.llm_base_url || "";
       setModelOptions(resp.model || "", []);
-      byId("settingsStatus").innerText = resp.has_token ? "Token saved" : "No token saved";
+      byId("settingsStatus").innerText = resp.has_token ? "Da luu token" : "Chua co token";
     });
   }
 
@@ -140,30 +140,39 @@
       model: byId("model").value,
       api_token: byId("apiToken").value
     };
-    byId("settingsStatus").innerText = "Saving...";
+    byId("settingsStatus").innerText = "Dang luu...";
     postJSON("/api/settings", payload, function (err) {
       if (err) {
-        byId("settingsStatus").innerText = "Save failed: " + err;
+        byId("settingsStatus").innerText = "Luu loi: " + err;
         return;
       }
       byId("apiToken").value = "";
-      byId("settingsStatus").innerText = "Saved";
+      byId("settingsStatus").innerText = "Da luu";
     });
   }
 
   function fetchModels() {
-    byId("settingsStatus").innerText = "Fetching models...";
+    var btn = byId("fetchModels");
+    btn.disabled = true;
+    byId("settingsStatus").innerText = "Dang tai model...";
+    byId("settingsDetail").innerText = "Dang goi /models. Neu URL/token sai, loi se hien o day.";
+    addEvent({ ok: true, name: "models.fetch", message: "Dang goi API lay danh sach model" });
     postJSON("/api/models", {
       llm_base_url: byId("llmBaseURL").value,
       api_token: byId("apiToken").value
     }, function (err, resp) {
+      btn.disabled = false;
       if (err) {
-        byId("settingsStatus").innerText = "Fetch failed: " + err;
+        byId("settingsStatus").innerText = "Tai model loi: " + err;
+        byId("settingsDetail").innerText = err;
+        addEvent({ ok: false, name: "models.fetch", message: err });
         return;
       }
       var current = byId("model").value;
       setModelOptions(current, resp.models || []);
-      byId("settingsStatus").innerText = "Fetched " + (resp.models ? resp.models.length : 0) + " models";
+      byId("settingsStatus").innerText = "Da tai " + (resp.models ? resp.models.length : 0) + " model";
+      byId("settingsDetail").innerText = resp.models && resp.models.length ? "Chon model trong dropdown roi bam Luu." : "API tra ve 0 model.";
+      addEvent({ ok: true, name: "models.fetch", message: "Da tai xong danh sach model" });
     });
   }
 
@@ -175,7 +184,7 @@
       if (models[i].id === selected) continue;
       addOption(select, models[i].id, models[i].id);
     }
-    if (!selected && models.length === 0) addOption(select, "", "Fetch models first");
+    if (!selected && models.length === 0) addOption(select, "", "Bam Tai model");
     select.value = selected || (models.length ? models[0].id : "");
   }
 

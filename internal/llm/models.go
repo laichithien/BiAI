@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/url"
 	"path"
@@ -44,7 +45,12 @@ func FetchModels(ctx context.Context, baseURL, token string) ([]Model, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, errors.New("model fetch failed: " + resp.Status)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1200))
+		msg := strings.TrimSpace(string(body))
+		if msg == "" {
+			msg = resp.Status
+		}
+		return nil, errors.New("model fetch failed: " + resp.Status + ": " + msg)
 	}
 	var payload struct {
 		Data []struct {
