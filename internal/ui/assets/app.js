@@ -24,6 +24,7 @@
     loadSettings();
     loadHealth();
     loadSessions();
+    loadTranscript(sessionID);
   }
 
   function byId(id) {
@@ -170,6 +171,7 @@
       }
       if (resp.event) addEvent(resp.event);
       addMessage("agent", resp.message || "");
+      loadSessions();
     });
   }
 
@@ -322,11 +324,30 @@
     div.onclick = function () {
       sessionID = session.id;
       saveStoredSession(sessionID);
-      byId("chat").innerHTML = "";
-      addEmptyState();
+      loadTranscript(sessionID);
       loadSessions();
     };
     list.appendChild(div);
+  }
+
+  function loadTranscript(id) {
+    if (!id) {
+      byId("chat").innerHTML = "";
+      addEmptyState();
+      return;
+    }
+    getJSON("/api/session?id=" + encodeURIComponent(id), function (err, resp) {
+      byId("chat").innerHTML = "";
+      if (err || !resp || !resp.messages || !resp.messages.length) {
+        addEmptyState();
+        return;
+      }
+      for (var i = 0; i < resp.messages.length; i++) {
+        var m = resp.messages[i];
+        addMessage(m.role === "user" ? "user" : "agent", m.content || "");
+      }
+      byId("chat").scrollTop = byId("chat").scrollHeight;
+    });
   }
 
   function addEmptyState() {
@@ -340,7 +361,8 @@
       '<div class="suggestion"><b>/list .</b><span>Inspect project files</span></div>' +
       '<div class="suggestion"><b>/read README.md</b><span>Open a file safely</span></div>' +
       '<div class="suggestion"><b>/search keyword</b><span>Search workspace text</span></div>' +
-      '<div class="suggestion"><b>/cmd go test ./...</b><span>Run command with policy checks</span></div>' +
+      '<div class="suggestion"><b>/status</b><span>Show provider, history, OS context</span></div>' +
+      '<div class="suggestion"><b>/init</b><span>Create AGENTS.md for this workspace</span></div>' +
       '</div>';
     byId("chat").appendChild(wrap);
   }

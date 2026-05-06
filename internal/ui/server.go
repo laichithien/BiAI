@@ -56,6 +56,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/health", s.requireToken(s.handleHealth))
 	mux.HandleFunc("/api/context", s.requireToken(s.handleContext))
 	mux.HandleFunc("/api/sessions", s.requireToken(s.handleSessions))
+	mux.HandleFunc("/api/session", s.requireToken(s.handleSession))
 	s.server = &http.Server{Handler: mux}
 	go func() {
 		if err := s.server.Serve(ln); err != nil && err != http.ErrServerClosed {
@@ -267,6 +268,22 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id := strings.TrimSpace(r.URL.Query().Get("id"))
+	if id == "" {
+		writeJSON(w, map[string]string{"error": "missing session id"}, http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, map[string]interface{}{
+		"session_id": id,
+		"messages":   s.agent.Transcript(id),
+	}, http.StatusOK)
 }
 
 func (s *Server) logPath() string {

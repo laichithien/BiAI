@@ -92,6 +92,22 @@ func (a *Agent) Chat(ctx context.Context, req ChatRequest) ChatResponse {
 	lower := strings.ToLower(prompt)
 
 	switch {
+	case lower == "/status":
+		msg := a.statusMessage(workspace, sessionID)
+		events = append(events, tools.Event{Name: "system.status", OK: true, Message: "Status loaded"})
+		return a.respond(sessionID, runID, msg, events, nil)
+	case lower == "/init":
+		path, created, err := memory.EnsureWorkspaceAgents(workspace)
+		if err != nil {
+			events = append(events, tools.Event{Name: "instructions.init", OK: false, Message: err.Error()})
+			return a.respond(sessionID, runID, "Khong tao duoc AGENTS.md: "+err.Error(), events, nil)
+		}
+		action := "Da co san"
+		if created {
+			action = "Da tao"
+		}
+		events = append(events, tools.Event{Name: "instructions.init", OK: true, Message: action + " AGENTS.md"})
+		return a.respond(sessionID, runID, action+" instruction file:\n"+path, events, nil)
 	case strings.HasPrefix(lower, "/list"):
 		ev, msg := a.tools.ListDirectory(workspace, strings.TrimSpace(prompt[len("/list"):]))
 		events = append(events, ev)
@@ -227,8 +243,40 @@ func (a *Agent) ListSessions() []memory.SessionInfo {
 	return a.history.ListSessions()
 }
 
+func (a *Agent) Transcript(sessionID string) []memory.TranscriptEntry {
+	return a.history.Transcript(sessionID, 400)
+}
+
 func (a *Agent) LoadedInstructions(workspace string) memory.InstructionSet {
 	return memory.LoadInstructions(a.dataDir, workspace)
+}
+
+func (a *Agent) statusMessage(workspace, sessionID string) string {
+	cfg, _ := config.LoadUserConfig(a.dataDir)
+	sec, _ := config.LoadUserSecrets(a.dataDir)
+	instructions := memory.LoadInstructions(a.dataDir, workspace)
+	var b strings.Builder
+	b.WriteString("BiAI AgentDesk status\n")
+	b.WriteString("- Session: " + sessionID + "\n")
+	b.WriteString("- Base URL: " + cfg.LLMBaseURL + "\n")
+	b.WriteString("- Model: " + cfg.Model + "\n")
+	if sec.APIToken != "" {
+		b.WriteString("- Token: saved\n")
+	} else {
+		b.WriteString("- Token: missing\n")
+	}
+	b.WriteString("- History dir: " + a.history.Path() + "\n")
+	if len(instructions.Loaded) == 0 {
+		b.WriteString("- Instructions: none loaded\n")
+	} else {
+		b.WriteString("- Instructions:\n")
+		for _, f := range instructions.Loaded {
+			b.WriteString("  - " + f.Path + "\n")
+		}
+	}
+	b.WriteString("\n")
+	b.WriteString(sysctx.DynamicContext(a.dataDir, workspace))
+	return b.String()
 }
 
 func (a *Agent) respond(sessionID, runID, message string, events []tools.Event, approval *ApprovalDraft) ChatResponse {

@@ -32,6 +32,13 @@ type SessionInfo struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type TranscriptEntry struct {
+	Time    time.Time `json:"time"`
+	RunID   string    `json:"run_id"`
+	Role    string    `json:"role"`
+	Content string    `json:"content"`
+}
+
 func NewHistory(dataDir string) *History {
 	return &History{path: filepath.Join(dataDir, "sessions")}
 }
@@ -101,6 +108,43 @@ func (h *History) Recent(sessionID string, limit int) []HistoryEntry {
 			if len(entries) > limit {
 				entries = entries[len(entries)-limit:]
 			}
+		}
+	}
+	return entries
+}
+
+func (h *History) Transcript(sessionID string, limit int) []TranscriptEntry {
+	if h == nil {
+		return nil
+	}
+	f, err := os.Open(h.SessionPath(sessionID))
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	var entries []TranscriptEntry
+	scanner := bufio.NewScanner(f)
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+	for scanner.Scan() {
+		var e HistoryEntry
+		if err := json.Unmarshal(scanner.Bytes(), &e); err != nil {
+			continue
+		}
+		if e.Role != "user" && e.Role != "assistant" {
+			continue
+		}
+		if strings.TrimSpace(e.Content) == "" {
+			continue
+		}
+		entries = append(entries, TranscriptEntry{
+			Time:    e.Time,
+			RunID:   e.RunID,
+			Role:    e.Role,
+			Content: e.Content,
+		})
+		if limit > 0 && len(entries) > limit {
+			entries = entries[len(entries)-limit:]
 		}
 	}
 	return entries
