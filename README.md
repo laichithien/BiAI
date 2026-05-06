@@ -26,7 +26,17 @@ go build -o agentdesk-win7-amd64.exe .\cmd\agentdesk
 agentdesk-win7-386.exe
 ```
 
-On Windows, the app opens a dedicated `mshta.exe` window with no browser address bar. Internally it serves the embedded UI over `127.0.0.1` with a random per-run token.
+On Windows, the normal release executable is built as a GUI app and opens a dedicated `mshta.exe` window with no browser address bar. Internally it serves the embedded UI over `127.0.0.1` with a random per-run token. If `mshta.exe` exits immediately, the app falls back to the default browser.
+
+If double-clicking appears to do nothing, check:
+
+```text
+%APPDATA%\BiAI\AgentDesk\agentdesk.log
+%APPDATA%\BiAI\AgentDesk\startup-error.log
+%APPDATA%\BiAI\AgentDesk\crash.log
+```
+
+Release also includes `*-debug-console.exe`. Run that from `cmd.exe` to see startup logs directly.
 
 ## MVP Commands
 
@@ -45,4 +55,3 @@ Delete-like commands such as `del`, `rd /s`, `Remove-Item`, `git clean -fd`, and
 go test ./...
 go build ./cmd/agentdesk
 ```
-
