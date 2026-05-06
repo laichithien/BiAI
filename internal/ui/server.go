@@ -15,6 +15,7 @@ import (
 	"biai/internal/agent"
 	"biai/internal/config"
 	"biai/internal/llm"
+	"biai/internal/logging"
 )
 
 //go:embed assets/*
@@ -23,17 +24,18 @@ var embedded embed.FS
 type Server struct {
 	agent   *agent.Agent
 	dataDir string
+	logger  *logging.Logger
 	token   string
 	server  *http.Server
 	ln      net.Listener
 }
 
-func NewServer(a *agent.Agent, dataDir string) (*Server, error) {
+func NewServer(a *agent.Agent, dataDir string, logger *logging.Logger) (*Server, error) {
 	token, err := randomToken()
 	if err != nil {
 		return nil, err
 	}
-	return &Server{agent: a, dataDir: dataDir, token: token}, nil
+	return &Server{agent: a, dataDir: dataDir, logger: logger, token: token}, nil
 }
 
 func (s *Server) Start() error {
@@ -50,11 +52,20 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/approval", s.requireToken(s.handleApproval))
 	mux.HandleFunc("/api/settings", s.requireToken(s.handleSettings))
 	mux.HandleFunc("/api/models", s.requireToken(s.handleModels))
+	mux.HandleFunc("/api/health", s.requireToken(s.handleHealth))
 	s.server = &http.Server{Handler: mux}
 	go func() {
-		_ = s.server.Serve(ln)
+		if err := s.server.Serve(ln); err != nil && err != http.ErrServerClosed {
+			s.logf("UI server stopped with error: %v", err)
+		}
 	}()
 	return nil
+}
+
+func (s *Server) logf(format string, args ...interface{}) {
+	if s.logger != nil {
+		s.logger.Printf(format, args...)
+	}
 }
 
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
@@ -67,6 +78,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		APIToken   string `json:"api_token"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.logf("models request decode failed: %v", err)
 		writeJSON(w, map[string]string{"error": err.Error()}, http.StatusBadRequest)
 		return
 	}
@@ -84,9 +96,11 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	}
 	models, err := llm.FetchModels(r.Context(), baseURL, token)
 	if err != nil {
+		s.logf("fetch models failed baseURL=%s error=%v", baseURL, err)
 		writeJSON(w, map[string]string{"error": err.Error()}, http.StatusBadRequest)
 		return
 	}
+	s.logf("fetched models baseURL=%s count=%d", baseURL, len(models))
 	writeJSON(w, map[string]interface{}{"models": models}, http.StatusOK)
 }
 
@@ -148,9 +162,11 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 	var req agent.ChatRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.logf("chat request decode failed: %v", err)
 		writeJSON(w, map[string]string{"error": err.Error()}, http.StatusBadRequest)
 		return
 	}
+	s.logf("chat request workspace=%s promptLen=%d", req.Workspace, len(req.Prompt))
 	resp := s.agent.Chat(r.Context(), req)
 	writeJSON(w, resp, http.StatusOK)
 }
@@ -162,9 +178,11 @@ func (s *Server) handleApproval(w http.ResponseWriter, r *http.Request) {
 	}
 	var req agent.ApprovalRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.logf("approval request decode failed: %v", err)
 		writeJSON(w, map[string]string{"error": err.Error()}, http.StatusBadRequest)
 		return
 	}
+	s.logf("approval decision id=%s decision=%s", req.ApprovalID, req.Decision)
 	resp := s.agent.DecideApproval(r.Context(), req)
 	writeJSON(w, resp, http.StatusOK)
 }
@@ -174,11 +192,13 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		cfg, err := config.LoadUserConfig(s.dataDir)
 		if err != nil {
+			s.logf("load config failed: %v", err)
 			writeJSON(w, map[string]string{"error": err.Error()}, http.StatusInternalServerError)
 			return
 		}
 		sec, err := config.LoadUserSecrets(s.dataDir)
 		if err != nil {
+			s.logf("load secrets failed: %v", err)
 			writeJSON(w, map[string]string{"error": err.Error()}, http.StatusInternalServerError)
 			return
 		}
@@ -194,23 +214,42 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			APIToken   string `json:"api_token"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.logf("settings request decode failed: %v", err)
 			writeJSON(w, map[string]string{"error": err.Error()}, http.StatusBadRequest)
 			return
 		}
 		if err := config.SaveUserConfig(s.dataDir, config.UserConfig{LLMBaseURL: strings.TrimSpace(req.LLMBaseURL), Model: strings.TrimSpace(req.Model)}); err != nil {
+			s.logf("save config failed: %v", err)
 			writeJSON(w, map[string]string{"error": err.Error()}, http.StatusInternalServerError)
 			return
 		}
 		if strings.TrimSpace(req.APIToken) != "" {
 			if err := config.SaveUserSecrets(s.dataDir, config.UserSecrets{APIToken: strings.TrimSpace(req.APIToken)}); err != nil {
+				s.logf("save secrets failed: %v", err)
 				writeJSON(w, map[string]string{"error": err.Error()}, http.StatusInternalServerError)
 				return
 			}
 		}
+		s.logf("settings saved baseURL=%s model=%s tokenProvided=%v", strings.TrimSpace(req.LLMBaseURL), strings.TrimSpace(req.Model), strings.TrimSpace(req.APIToken) != "")
 		writeJSON(w, map[string]bool{"ok": true}, http.StatusOK)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, map[string]interface{}{
+		"ok":       true,
+		"data_dir": s.dataDir,
+		"log_path": s.logPath(),
+	}, http.StatusOK)
+}
+
+func (s *Server) logPath() string {
+	if s.logger == nil {
+		return ""
+	}
+	return s.logger.Path()
 }
 
 func writeJSON(w http.ResponseWriter, v interface{}, status int) {

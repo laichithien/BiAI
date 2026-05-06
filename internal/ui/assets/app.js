@@ -19,6 +19,7 @@
       return true;
     };
     loadSettings();
+    loadHealth();
   }
 
   function byId(id) {
@@ -120,6 +121,16 @@
       byId("llmBaseURL").value = resp.llm_base_url || "";
       setModelOptions(resp.model || "", []);
       byId("settingsStatus").innerText = resp.has_token ? "Token saved" : "No token saved";
+    });
+  }
+
+  function loadHealth() {
+    getJSON("/api/health", function (err, resp) {
+      if (err) {
+        byId("diag").innerText = "Health check failed: " + err;
+        return;
+      }
+      byId("diag").innerText = "Data: " + (resp.data_dir || "") + "\nLog: " + (resp.log_path || "");
     });
   }
 
