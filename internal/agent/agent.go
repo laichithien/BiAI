@@ -9,7 +9,9 @@ import (
 
 	"biai/internal/config"
 	"biai/internal/llm"
+	"biai/internal/memory"
 	"biai/internal/safety"
+	sysctx "biai/internal/system"
 	"biai/internal/tools"
 )
 
@@ -21,6 +23,7 @@ type Agent struct {
 	dataDir string
 	tools   *tools.Registry
 	audit   *safety.AuditLog
+	history *memory.History
 }
 
 func New(cfg Config) *Agent {
@@ -29,6 +32,7 @@ func New(cfg Config) *Agent {
 		dataDir: cfg.DataDir,
 		audit:   audit,
 		tools:   tools.NewRegistry(audit),
+		history: memory.NewHistory(cfg.DataDir),
 	}
 }
 
@@ -63,6 +67,7 @@ func (a *Agent) Chat(ctx context.Context, req ChatRequest) ChatResponse {
 	if prompt == "" {
 		return ChatResponse{RunID: runID, Message: "Nhap noi dung truoc khi gui."}
 	}
+	a.history.Append(memory.HistoryEntry{SessionID: "current", RunID: runID, Role: "user", Content: prompt})
 
 	events := make([]tools.Event, 0, 2)
 	lower := strings.ToLower(prompt)
@@ -71,84 +76,84 @@ func (a *Agent) Chat(ctx context.Context, req ChatRequest) ChatResponse {
 	case strings.HasPrefix(lower, "/list"):
 		ev, msg := a.tools.ListDirectory(workspace, strings.TrimSpace(prompt[len("/list"):]))
 		events = append(events, ev)
-		return ChatResponse{RunID: runID, Message: msg, Events: events}
+		return a.respond(runID, msg, events, nil)
 	case strings.HasPrefix(lower, "/read"):
 		ev, msg := a.tools.ReadFile(workspace, strings.TrimSpace(prompt[len("/read"):]))
 		events = append(events, ev)
-		return ChatResponse{RunID: runID, Message: msg, Events: events}
+		return a.respond(runID, msg, events, nil)
 	case strings.HasPrefix(lower, "/search"):
 		ev, msg := a.tools.SearchText(workspace, strings.TrimSpace(prompt[len("/search"):]))
 		events = append(events, ev)
-		return ChatResponse{RunID: runID, Message: msg, Events: events}
+		return a.respond(runID, msg, events, nil)
 	case strings.HasPrefix(lower, "/cmd"):
 		command := strings.TrimSpace(prompt[len("/cmd"):])
 		ev, approval, msg := a.tools.PlanCommand(runID, workspace, command, "User requested command execution from chat.")
 		events = append(events, ev)
 		if approval != nil {
-			return ChatResponse{
-				RunID:   runID,
-				Message: msg,
-				Events:  events,
-				Approval: &ApprovalDraft{
-					ID:            approval.ID,
-					RunID:         runID,
-					ToolName:      approval.ToolName,
-					Risk:          string(approval.Risk),
-					Command:       approval.Command,
-					Cwd:           approval.Cwd,
-					Reason:        approval.ReasonFromAgent,
-					SafetySummary: approval.SafetySummary,
-					Arguments:     approval.Arguments,
-				},
-			}
+			return a.respond(runID, msg, events, &ApprovalDraft{
+				ID:            approval.ID,
+				RunID:         runID,
+				ToolName:      approval.ToolName,
+				Risk:          string(approval.Risk),
+				Command:       approval.Command,
+				Cwd:           approval.Cwd,
+				Reason:        approval.ReasonFromAgent,
+				SafetySummary: approval.SafetySummary,
+				Arguments:     approval.Arguments,
+			})
 		}
-		return ChatResponse{RunID: runID, Message: msg, Events: events}
+		return a.respond(runID, msg, events, nil)
 	default:
 		return a.runLLM(ctx, runID, workspace, prompt)
 	}
 }
 
 func (a *Agent) runLLM(ctx context.Context, runID, workspace, prompt string) ChatResponse {
+	events := make([]tools.Event, 0, 4)
 	cfg, cfgErr := config.LoadUserConfig(a.dataDir)
 	sec, secErr := config.LoadUserSecrets(a.dataDir)
 	if cfgErr != nil {
-		return ChatResponse{RunID: runID, Message: "Khong doc duoc config: " + cfgErr.Error()}
+		return a.respond(runID, "Khong doc duoc config: "+cfgErr.Error(), events, nil)
 	}
 	if secErr != nil {
-		return ChatResponse{RunID: runID, Message: "Khong doc duoc token: " + secErr.Error()}
+		return a.respond(runID, "Khong doc duoc token: "+secErr.Error(), events, nil)
+	}
+	instructions := memory.LoadInstructions(a.dataDir, workspace)
+	systemPrompt := "You are BiAI AgentDesk, a practical local coding assistant. Use tools when you need workspace evidence. Never invent file contents. For shell commands, explain why; destructive commands require user approval by the app.\n\n" + sysctx.DynamicContext(a.dataDir, workspace)
+	if instructions.Text != "" {
+		systemPrompt += "\n\nProject/user instructions:\n" + instructions.Text
+		events = append(events, tools.Event{Name: "instructions.loaded", OK: true, Message: fmt.Sprintf("Loaded %d instruction file(s)", len(instructions.Loaded))})
 	}
 	llmCfg := llm.ChatConfig{BaseURL: cfg.LLMBaseURL, Token: sec.APIToken, Model: cfg.Model}
-	events := make([]tools.Event, 0, 4)
 	messages := []llm.Message{
-		{Role: "system", Content: "You are BiAI AgentDesk, a practical local coding assistant. Use tools when you need workspace evidence. Never invent file contents. For shell commands, explain why; destructive commands require user approval by the app."},
-		{Role: "user", Content: prompt},
+		{Role: "system", Content: systemPrompt},
 	}
+	for _, h := range a.history.Recent(12) {
+		if h.RunID == runID {
+			continue
+		}
+		if h.Role == "user" || h.Role == "assistant" {
+			messages = append(messages, llm.Message{Role: h.Role, Content: h.Content})
+		}
+	}
+	messages = append(messages, llm.Message{Role: "user", Content: prompt})
 	for turn := 0; turn < 4; turn++ {
 		msg, err := llm.Complete(ctx, llmCfg, messages, toolDefinitions())
 		if err != nil {
-			return ChatResponse{
-				RunID:   runID,
-				Message: "Chua goi duoc AI: " + err.Error() + "\n\nKiem tra API URL, Token, Model; sau do bam Tai model va Luu.",
-				Events:  events,
-			}
+			return a.respond(runID, "Chua goi duoc AI: "+err.Error()+"\n\nKiem tra API URL, Token, Model; sau do bam Tai model va Luu.", events, nil)
 		}
 		if len(msg.ToolCalls) == 0 {
 			if msg.Content == "" {
 				msg.Content = "Model khong tra ve noi dung."
 			}
-			return ChatResponse{RunID: runID, Message: msg.Content, Events: events}
+			return a.respond(runID, msg.Content, events, nil)
 		}
 		messages = append(messages, msg)
 		for _, call := range msg.ToolCalls {
 			ev, content, approval := a.executeLLMTool(runID, workspace, call)
 			events = append(events, ev)
 			if approval != nil {
-				return ChatResponse{
-					RunID:    runID,
-					Message:  "Command can user approve truoc khi execute.",
-					Events:   events,
-					Approval: approval,
-				}
+				return a.respond(runID, "Command can user approve truoc khi execute.", events, approval)
 			}
 			messages = append(messages, llm.Message{
 				Role:       "tool",
@@ -158,7 +163,20 @@ func (a *Agent) runLLM(ctx context.Context, runID, workspace, prompt string) Cha
 			})
 		}
 	}
-	return ChatResponse{RunID: runID, Message: "Agent dung lai sau nhieu tool calls. Hay thu lai voi yeu cau cu the hon.", Events: events}
+	return a.respond(runID, "Agent dung lai sau nhieu tool calls. Hay thu lai voi yeu cau cu the hon.", events, nil)
+}
+
+func (a *Agent) HistoryPath() string {
+	return a.history.Path()
+}
+
+func (a *Agent) LoadedInstructions(workspace string) memory.InstructionSet {
+	return memory.LoadInstructions(a.dataDir, workspace)
+}
+
+func (a *Agent) respond(runID, message string, events []tools.Event, approval *ApprovalDraft) ChatResponse {
+	a.history.Append(memory.HistoryEntry{SessionID: "current", RunID: runID, Role: "assistant", Content: message})
+	return ChatResponse{RunID: runID, Message: message, Events: events, Approval: approval}
 }
 
 func (a *Agent) executeLLMTool(runID, workspace string, call llm.ToolCall) (tools.Event, string, *ApprovalDraft) {

@@ -185,7 +185,18 @@
       if (!byId("workspace").value && resp.default_workspace) {
         byId("workspace").value = resp.default_workspace;
       }
-      byId("diag").innerText = "Data: " + (resp.data_dir || "") + "\nLog: " + (resp.log_path || "");
+      byId("diag").innerText = "Data: " + (resp.data_dir || "") + "\nLog: " + (resp.log_path || "") + "\nHistory: " + (resp.history_path || "");
+      loadContext();
+    });
+  }
+
+  function loadContext() {
+    var workspace = encodeURIComponent(byId("workspace").value || "");
+    getJSON("/api/context?workspace=" + workspace, function (err, resp) {
+      if (err || !resp || !resp.instructions) return;
+      if (resp.instructions.length) {
+        addEvent({ ok: true, name: "instructions.loaded", message: resp.instructions.length + " instruction file(s)" });
+      }
     });
   }
 

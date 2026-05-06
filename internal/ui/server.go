@@ -54,6 +54,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/settings", s.requireToken(s.handleSettings))
 	mux.HandleFunc("/api/models", s.requireToken(s.handleModels))
 	mux.HandleFunc("/api/health", s.requireToken(s.handleHealth))
+	mux.HandleFunc("/api/context", s.requireToken(s.handleContext))
 	s.server = &http.Server{Handler: mux}
 	go func() {
 		if err := s.server.Serve(ln); err != nil && err != http.ErrServerClosed {
@@ -240,7 +241,15 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"ok":                true,
 		"data_dir":          s.dataDir,
 		"log_path":          s.logPath(),
+		"history_path":      s.agent.HistoryPath(),
 		"default_workspace": wd,
+	}, http.StatusOK)
+}
+
+func (s *Server) handleContext(w http.ResponseWriter, r *http.Request) {
+	workspace := r.URL.Query().Get("workspace")
+	writeJSON(w, map[string]interface{}{
+		"instructions": s.agent.LoadedInstructions(workspace).Loaded,
 	}, http.StatusOK)
 }
 
