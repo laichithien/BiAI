@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -22,6 +24,12 @@ type HistoryEntry struct {
 	RunID     string    `json:"run_id"`
 	Role      string    `json:"role"`
 	Content   string    `json:"content"`
+}
+
+type SessionInfo struct {
+	ID        string    `json:"id"`
+	Title     string    `json:"title"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func NewHistory(dataDir string) *History {
@@ -96,4 +104,58 @@ func (h *History) Recent(sessionID string, limit int) []HistoryEntry {
 		}
 	}
 	return entries
+}
+
+func (h *History) ListSessions() []SessionInfo {
+	if h == nil {
+		return nil
+	}
+	entries, err := os.ReadDir(h.path)
+	if err != nil {
+		return nil
+	}
+	var sessions []SessionInfo
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".jsonl") {
+			continue
+		}
+		id := strings.TrimSuffix(entry.Name(), ".jsonl")
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		title := h.sessionTitle(id)
+		sessions = append(sessions, SessionInfo{
+			ID:        id,
+			Title:     title,
+			UpdatedAt: info.ModTime(),
+		})
+	}
+	sort.Slice(sessions, func(i, j int) bool {
+		return sessions[i].UpdatedAt.After(sessions[j].UpdatedAt)
+	})
+	return sessions
+}
+
+func (h *History) sessionTitle(sessionID string) string {
+	f, err := os.Open(h.SessionPath(sessionID))
+	if err != nil {
+		return sessionID
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		var e HistoryEntry
+		if err := json.Unmarshal(scanner.Bytes(), &e); err == nil && e.Role == "user" {
+			title := strings.TrimSpace(e.Content)
+			if title == "" {
+				break
+			}
+			if len(title) > 42 {
+				title = title[:42] + "..."
+			}
+			return title
+		}
+	}
+	return sessionID
 }

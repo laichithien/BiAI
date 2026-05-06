@@ -219,6 +219,14 @@ func (a *Agent) HistoryPath() string {
 	return a.history.Path()
 }
 
+func (a *Agent) NewSessionID() string {
+	return memory.NewSessionID()
+}
+
+func (a *Agent) ListSessions() []memory.SessionInfo {
+	return a.history.ListSessions()
+}
+
 func (a *Agent) LoadedInstructions(workspace string) memory.InstructionSet {
 	return memory.LoadInstructions(a.dataDir, workspace)
 }

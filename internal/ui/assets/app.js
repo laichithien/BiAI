@@ -6,6 +6,7 @@
   function init() {
     token = getQuery("token");
     sessionID = getStoredSession();
+    byId("newSession").onclick = newSession;
     byId("send").onclick = sendPrompt;
     byId("saveSettings").onclick = saveSettings;
     byId("fetchModels").onclick = fetchModels;
@@ -22,6 +23,7 @@
     };
     loadSettings();
     loadHealth();
+    loadSessions();
   }
 
   function byId(id) {
@@ -130,6 +132,7 @@
       if (resp.session_id) {
         sessionID = resp.session_id;
         saveStoredSession(sessionID);
+        loadSessions();
       }
       addMessage("agent", resp.message || "");
       if (resp.approval) showApproval(resp.approval);
@@ -283,6 +286,63 @@
     try {
       if (window.localStorage) window.localStorage.setItem("biai.session_id", id);
     } catch (e) {}
+  }
+
+  function newSession() {
+    postJSON("/api/sessions", {}, function (err, resp) {
+      if (err) {
+        addMessage("agent", "Cannot create session: " + err);
+        return;
+      }
+      sessionID = resp.session_id;
+      saveStoredSession(sessionID);
+      byId("chat").innerHTML = "";
+      addEmptyState();
+      loadSessions();
+    });
+  }
+
+  function loadSessions() {
+    getJSON("/api/sessions", function (err, resp) {
+      if (err || !resp) return;
+      var list = byId("sessionList");
+      list.innerHTML = "";
+      var sessions = resp.sessions || [];
+      for (var i = 0; i < sessions.length; i++) {
+        addSessionItem(list, sessions[i]);
+      }
+    });
+  }
+
+  function addSessionItem(list, session) {
+    var div = document.createElement("div");
+    div.className = "sessionItem" + (session.id === sessionID ? " active" : "");
+    div.title = session.title || session.id;
+    div.appendChild(document.createTextNode(session.title || session.id));
+    div.onclick = function () {
+      sessionID = session.id;
+      saveStoredSession(sessionID);
+      byId("chat").innerHTML = "";
+      addEmptyState();
+      loadSessions();
+    };
+    list.appendChild(div);
+  }
+
+  function addEmptyState() {
+    var wrap = document.createElement("div");
+    wrap.className = "emptyState";
+    wrap.innerHTML =
+      '<div class="emptyKicker">Local Agent Ready</div>' +
+      '<div class="emptyTitle">Start with a command or ask about the workspace.</div>' +
+      '<div class="emptyText">Tool calls appear inline in the conversation. Destructive commands pause for approval before execution.</div>' +
+      '<div class="suggestions">' +
+      '<div class="suggestion"><b>/list .</b><span>Inspect project files</span></div>' +
+      '<div class="suggestion"><b>/read README.md</b><span>Open a file safely</span></div>' +
+      '<div class="suggestion"><b>/search keyword</b><span>Search workspace text</span></div>' +
+      '<div class="suggestion"><b>/cmd go test ./...</b><span>Run command with policy checks</span></div>' +
+      '</div>';
+    byId("chat").appendChild(wrap);
   }
 
   function postJSON(url, payload, cb) {
