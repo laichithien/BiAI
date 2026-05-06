@@ -7,56 +7,97 @@
   <link rel="stylesheet" href="/app.css" />
 </head>
 <body>
-  <div id="topbar">
-    <div class="brand">BiAI AgentDesk</div>
-    <div class="workspaceWrap">
-      <div class="topLabel">Workspace</div>
-      <input id="workspace" type="text" placeholder="C:\project" />
+  <div id="shell">
+    <div id="rail">
+      <div class="logo">Bi</div>
+      <div class="railTitle">BiAI</div>
+      <div class="railSub">AgentDesk</div>
+      <div class="railItem active">Chat</div>
+      <div class="railItem">Tools</div>
+      <div class="railItem">Logs</div>
     </div>
-    <span id="status">San sang</span>
-  </div>
-  <div id="main">
-    <div id="chat"></div>
-    <div id="side">
-      <div class="section">
-        <div class="sectionTitle">AI Provider</div>
-        <label>Base URL</label>
-        <input id="llmBaseURL" class="sideInput" type="text" placeholder="https://api.openai.com/v1" />
-        <label>API Token</label>
-        <input id="apiToken" class="sideInput" type="password" placeholder="Nhap token" />
-        <label>Model</label>
-        <select id="model" class="sideInput"></select>
-        <div class="buttonRow">
-          <button id="fetchModels" type="button">Tai model</button>
-          <button id="saveSettings" type="button">Luu</button>
+
+    <div id="work">
+      <div id="topbar">
+        <div>
+          <div class="pageTitle">Agent Console</div>
+          <div class="pageSub">Chat, inspect code, run guarded tools</div>
         </div>
-        <div id="settingsStatus" class="statusLine"></div>
-        <pre id="settingsDetail" class="detail"></pre>
+        <div class="topWorkspace">
+          <label>Workspace</label>
+          <input id="workspace" type="text" placeholder="Dang tai workspace..." />
+        </div>
+        <div id="status" class="statusBadge">San sang</div>
       </div>
 
-      <div class="section">
-        <div class="sectionTitle">Quick Commands</div>
-        <div class="quickCmd">/list .</div>
-        <div class="quickCmd">/read file.txt</div>
-        <div class="quickCmd">/search keyword</div>
-        <div class="quickCmd">/cmd go test ./...</div>
+      <div id="main">
+        <div id="chatPane">
+          <div id="chat">
+            <div class="emptyState">
+              <div class="emptyKicker">Local Agent Ready</div>
+              <div class="emptyTitle">Start with a command or ask about the workspace.</div>
+              <div class="emptyText">Tool calls appear inline in the conversation. Destructive commands pause for approval before execution.</div>
+              <div class="suggestions">
+                <div class="suggestion"><b>/list .</b><span>Inspect project files</span></div>
+                <div class="suggestion"><b>/read README.md</b><span>Open a file safely</span></div>
+                <div class="suggestion"><b>/search keyword</b><span>Search workspace text</span></div>
+                <div class="suggestion"><b>/cmd go test ./...</b><span>Run command with policy checks</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="side">
+          <div class="panel provider">
+            <div class="panelHead">
+              <div>
+                <div class="panelTitle">AI Provider</div>
+                <div class="panelSub">OpenAI-compatible /v1 endpoint</div>
+              </div>
+            </div>
+            <label>Base URL</label>
+            <input id="llmBaseURL" class="sideInput" type="text" placeholder="https://api.openai.com/v1" />
+            <label>API Token</label>
+            <input id="apiToken" class="sideInput" type="password" placeholder="Paste token" />
+            <label>Model</label>
+            <select id="model" class="sideInput"></select>
+            <div class="buttonRow">
+              <button id="fetchModels" class="secondary" type="button">Fetch</button>
+              <button id="saveSettings" class="primary" type="button">Save</button>
+            </div>
+            <div id="modelFetchBox" class="fetchBox">
+              <span id="fetchDot"></span>
+              <span id="settingsStatus">Chua tai model</span>
+            </div>
+            <pre id="settingsDetail" class="detail"></pre>
+          </div>
+
+          <div class="panel">
+            <div class="panelTitle">Command Palette</div>
+            <div class="quickCmd">/list .</div>
+            <div class="quickCmd">/read file.txt</div>
+            <div class="quickCmd">/search keyword</div>
+            <div class="quickCmd">/cmd go test ./...</div>
+          </div>
+
+          <div class="panel">
+            <div class="panelTitle">Diagnostics</div>
+            <div id="diag" class="diagBox">Loading...</div>
+          </div>
+
+          <div class="panel eventsPanel">
+            <div class="panelTitle">Run Events</div>
+            <div class="hint">Mirrored in the chat timeline.</div>
+            <div id="events"></div>
+          </div>
+        </div>
       </div>
 
-      <div class="section">
-        <div class="sectionTitle">Diagnostics</div>
-        <div id="diag" class="diagBox">Loading...</div>
-      </div>
-
-      <div class="section">
-        <div class="sectionTitle">Events</div>
-        <div class="hint">Lenh xoa se hoi xac nhan truoc khi chay.</div>
-        <div id="events"></div>
+      <div id="composer">
+        <textarea id="prompt" placeholder="Message BiAI AgentDesk..."></textarea>
+        <button id="send" type="button">Send</button>
       </div>
     </div>
-  </div>
-  <div id="composer">
-    <textarea id="prompt" placeholder="Nhap yeu cau hoac lenh nhanh..."></textarea>
-    <button id="send" type="button">Gui</button>
   </div>
   <div id="approval" class="hidden">
     <div class="modal">

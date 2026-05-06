@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -238,10 +239,12 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	wd, _ := os.Getwd()
 	writeJSON(w, map[string]interface{}{
-		"ok":       true,
-		"data_dir": s.dataDir,
-		"log_path": s.logPath(),
+		"ok":                true,
+		"data_dir":          s.dataDir,
+		"log_path":          s.logPath(),
+		"default_workspace": wd,
 	}, http.StatusOK)
 }
 

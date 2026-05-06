@@ -37,16 +37,66 @@
 
   function setStatus(text) {
     byId("status").innerText = text;
+    byId("status").className = "statusBadge";
+  }
+
+  function setBusy(text) {
+    byId("status").innerText = text;
+    byId("status").className = "statusBadge busy";
+  }
+
+  function setError(text) {
+    byId("status").innerText = text;
+    byId("status").className = "statusBadge error";
   }
 
   function addMessage(kind, text) {
+    clearEmptyState();
     var div = document.createElement("div");
     div.className = "msg " + kind;
+    var head = document.createElement("div");
+    head.className = "msgHead";
+    head.appendChild(document.createTextNode(kind === "user" ? "You" : "BiAI"));
+    div.appendChild(head);
+    var body = document.createElement("div");
+    body.className = "msgBody";
     var pre = document.createElement("pre");
     pre.appendChild(document.createTextNode(text));
-    div.appendChild(pre);
+    body.appendChild(pre);
+    div.appendChild(body);
     byId("chat").appendChild(div);
     byId("chat").scrollTop = byId("chat").scrollHeight;
+  }
+
+  function addToolMessage(ev) {
+    clearEmptyState();
+    var div = document.createElement("div");
+    div.className = "msg tool " + (ev.ok ? "ok" : "err");
+    var head = document.createElement("div");
+    head.className = "msgHead";
+    head.appendChild(document.createTextNode((ev.ok ? "Tool completed" : "Tool blocked") + " · " + ev.name));
+    var body = document.createElement("div");
+    body.className = "msgBody";
+    body.appendChild(document.createTextNode(ev.message || ""));
+    if (ev.data && ev.data.output) {
+      var pre = document.createElement("pre");
+      pre.appendChild(document.createTextNode("\n" + ev.data.output));
+      body.appendChild(pre);
+    }
+    div.appendChild(head);
+    div.appendChild(body);
+    byId("chat").appendChild(div);
+    byId("chat").scrollTop = byId("chat").scrollHeight;
+  }
+
+  function clearEmptyState() {
+    var nodes = byId("chat").getElementsByTagName("div");
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i].className === "emptyState") {
+        nodes[i].parentNode.removeChild(nodes[i]);
+        return;
+      }
+    }
   }
 
   function addEvent(ev) {
@@ -55,6 +105,7 @@
     div.className = "event";
     div.appendChild(document.createTextNode((ev.ok ? "OK " : "ERR ") + ev.name + ": " + ev.message));
     byId("events").insertBefore(div, byId("events").firstChild);
+    addToolMessage(ev);
   }
 
   function sendPrompt() {
@@ -63,10 +114,11 @@
     if (!prompt) return;
     byId("prompt").value = "";
     addMessage("user", prompt);
-    setStatus("Dang chay");
+    setBusy("Dang chay");
     postJSON("/api/chat", { prompt: prompt, workspace: workspace }, function (err, resp) {
       setStatus("San sang");
       if (err) {
+        setError("Loi");
         addMessage("agent", "Error: " + err);
         return;
       }
@@ -130,6 +182,9 @@
         byId("diag").innerText = "Health check failed: " + err;
         return;
       }
+      if (!byId("workspace").value && resp.default_workspace) {
+        byId("workspace").value = resp.default_workspace;
+      }
       byId("diag").innerText = "Data: " + (resp.data_dir || "") + "\nLog: " + (resp.log_path || "");
     });
   }
@@ -154,6 +209,7 @@
   function fetchModels() {
     var btn = byId("fetchModels");
     btn.disabled = true;
+    byId("modelFetchBox").className = "fetchBox busy";
     byId("settingsStatus").innerText = "Dang tai model...";
     byId("settingsDetail").innerText = "Dang goi /models. Neu URL/token sai, loi se hien o day.";
     addEvent({ ok: true, name: "models.fetch", message: "Dang goi API lay danh sach model" });
@@ -163,6 +219,7 @@
     }, function (err, resp) {
       btn.disabled = false;
       if (err) {
+        byId("modelFetchBox").className = "fetchBox error";
         byId("settingsStatus").innerText = "Tai model loi: " + err;
         byId("settingsDetail").innerText = err;
         addEvent({ ok: false, name: "models.fetch", message: err });
@@ -170,6 +227,7 @@
       }
       var current = byId("model").value;
       setModelOptions(current, resp.models || []);
+      byId("modelFetchBox").className = "fetchBox ok";
       byId("settingsStatus").innerText = "Da tai " + (resp.models ? resp.models.length : 0) + " model";
       byId("settingsDetail").innerText = resp.models && resp.models.length ? "Chon model trong dropdown roi bam Luu." : "API tra ve 0 model.";
       addEvent({ ok: true, name: "models.fetch", message: "Da tai xong danh sach model" });
