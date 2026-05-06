@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+<head>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta charset="utf-8" />
+  <title>BiAI AgentDesk</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <div id="topbar">
+    <div class="brand">BiAI AgentDesk</div>
+    <input id="workspace" type="text" placeholder="Workspace path, vi du C:\project" />
+    <span id="status">Idle</span>
+  </div>
+  <div id="main">
+    <div id="chat"></div>
+    <div id="side">
+      <h3>LLM Settings</h3>
+      <label>Base URL</label>
+      <input id="llmBaseURL" class="sideInput" type="text" />
+      <label>Model</label>
+      <select id="model" class="sideInput"></select>
+      <label>API Token</label>
+      <input id="apiToken" class="sideInput" type="password" placeholder="leave blank to keep current" />
+      <button id="fetchModels" type="button">Fetch models</button>
+      <button id="saveSettings" type="button">Save settings</button>
+      <div id="settingsStatus" class="hint"></div>
+      <h3>Tool Safety</h3>
+      <div class="hint">Commands: /list, /read, /search, /cmd</div>
+      <div class="hint">Delete-like command phai approve truoc khi execute.</div>
+      <div id="events"></div>
+    </div>
+  </div>
+  <div id="composer">
+    <textarea id="prompt" placeholder="/list ."></textarea>
+    <button id="send" type="button">Send</button>
+  </div>
+  <div id="approval" class="hidden">
+    <div class="modal">
+      <h3>Approval Required</h3>
+      <div id="approvalBody"></div>
+      <div class="actions">
+        <button id="deny" type="button">Deny</button>
+        <button id="allow" type="button">Allow once</button>
+      </div>
+    </div>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,187 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: Segoe UI, Tahoma, Arial, sans-serif;
+  font-size: 13px;
+  color: #222;
+  background: #f3f3f3;
+}
+
+#topbar {
+  height: 42px;
+  line-height: 42px;
+  background: #2f3a45;
+  color: #fff;
+  padding: 0 10px;
+  overflow: hidden;
+}
+
+.brand {
+  float: left;
+  font-weight: bold;
+  margin-right: 12px;
+}
+
+#workspace {
+  float: left;
+  width: 58%;
+  margin-top: 8px;
+  padding: 4px 6px;
+  border: 1px solid #111;
+}
+
+#status {
+  float: right;
+  color: #d8e6f3;
+}
+
+#main {
+  position: absolute;
+  top: 42px;
+  bottom: 76px;
+  left: 0;
+  right: 0;
+}
+
+#chat {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  right: 300px;
+  overflow: auto;
+  background: #fff;
+  border-right: 1px solid #ccc;
+  padding: 10px;
+}
+
+#side {
+  position: absolute;
+  width: 279px;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  overflow: auto;
+  padding: 10px;
+  background: #fafafa;
+}
+
+#composer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 75px;
+  border-top: 1px solid #ccc;
+  background: #eee;
+}
+
+#prompt {
+  position: absolute;
+  left: 10px;
+  right: 94px;
+  top: 9px;
+  bottom: 9px;
+  resize: none;
+  padding: 7px;
+  font-family: Consolas, monospace;
+}
+
+#send {
+  position: absolute;
+  right: 10px;
+  top: 9px;
+  width: 74px;
+  bottom: 9px;
+}
+
+.msg {
+  margin: 0 0 10px 0;
+  padding: 8px;
+  border: 1px solid #ddd;
+  background: #fafafa;
+}
+
+.msg.user {
+  background: #eef5ff;
+}
+
+.msg.agent {
+  background: #fff;
+}
+
+pre {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: Consolas, monospace;
+  margin: 0;
+}
+
+.event {
+  border-bottom: 1px solid #ddd;
+  padding: 6px 0;
+}
+
+.hint {
+  color: #666;
+  margin-bottom: 8px;
+}
+
+label {
+  display: block;
+  margin-top: 8px;
+  color: #333;
+}
+
+.sideInput {
+  width: 258px;
+  box-sizing: border-box;
+  padding: 5px;
+  border: 1px solid #bbb;
+  margin-top: 3px;
+}
+
+#saveSettings,
+#fetchModels {
+  margin-top: 8px;
+  width: 120px;
+  padding: 5px;
+}
+
+.hidden {
+  display: none;
+}
+
+#approval {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.35);
+}
+
+.modal {
+  width: 560px;
+  margin: 90px auto 0 auto;
+  background: #fff;
+  border: 1px solid #333;
+  padding: 14px;
+}
+
+.actions {
+  text-align: right;
+  margin-top: 12px;
+}
+
+.actions button {
+  margin-left: 8px;
+  padding: 7px 12px;
+}
+
+#allow {
+  background: #8b1e1e;
+  color: #fff;
+  border: 1px solid #5d1010;
+}

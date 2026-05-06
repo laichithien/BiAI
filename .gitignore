@@ -1,0 +1,21 @@
+# Build outputs
+/agentdesk
+/*.exe
+/*.dll
+/*.so
+/*.dylib
+
+# Local runtime data
+/audit.jsonl
+/.agent_trash/
+/.biai/
+
+# Cloned third-party research repositories
+/docs/research-repos/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
